@@ -2,40 +2,34 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>ジャンプゲーム（猫） - 修正版</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>ねこジャンプ — 修正版</title>
 <style>
 :root{--bg:#cfe9ff;--panel:#ffffffcc;--accent:#ff7b6b}
-*{box-sizing:border-box}
-html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Hiragino Kaku Gothic ProN',Meiryo,sans-serif;background:linear-gradient(#cfe9ff,#eaf7ff);}
-#gameWrap{max-width:640px;margin:12px auto;padding:12px;background:var(--panel);border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.12);position:relative}
-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+*{box-sizing:border-box;user-select:none;-webkit-user-select:none;-ms-user-select:none}
+html,body{height:100%;margin:0;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Hiragino Kaku Gothic ProN',Meiryo,sans-serif;background:linear-gradient(#cfe9ff,#eaf7ff);}
+#gameWrap{max-width:640px;margin:0 auto;padding:8px;background:var(--panel);border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.12);position:relative;height:100vh;display:flex;flex-direction:column;justify-content:flex-start}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
 h1{font-size:18px;margin:0}
 .controls{display:flex;gap:8px;align-items:center}
-button{background:var(--accent);border:none;padding:8px 12px;border-radius:8px;color:#fff;font-weight:600;cursor:pointer}
+button{background:var(--accent);border:none;padding:8px 14px;border-radius:8px;color:#fff;font-weight:600;cursor:pointer}
 button.secondary{background:#666}
-#canvas{background:linear-gradient(#e8f6ff,#ffffff);display:block;border-radius:8px;width:100%;height:640px}
-.info{display:flex;gap:12px;align-items:center}
-.small{font-size:13px;color:#333}
-#score{font-weight:700;color:#0b6}
-#high{color:#06f}
-/* overlay */
+#canvas{background:linear-gradient(#e8f6ff,#ffffff);display:block;border-radius:8px;width:100%;flex:1}
+.touchpad{display:flex;gap:40px;margin-top:8px;justify-content:center}
+.tp-btn{width:90px;height:70px;border-radius:12px;border:2px solid #555;background:#fff;font-size:22px}
 .overlay{position:fixed;left:0;top:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.25);z-index:40}
 .panel{background:#fff;padding:14px;border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.18);min-width:260px}
 .hidden{display:none}
-.touchpad{display:flex;gap:8px;margin-top:8px;justify-content:center}
-.tp-btn{width:64px;height:48px;border-radius:8px;border:2px solid #555;background:#fff;font-size:18px}
-.footer{font-size:12px;color:#666;margin-top:8px;text-align:center}
 .confetti{position:fixed;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:50}
 </style>
 </head>
 <body>
 <div id="gameWrap">
   <header>
-    <h1>ねこジャンプ — コインをあつめよう</h1>
+    <h1>ねこジャンプ</h1>
     <div class="controls">
-      <div class="info small">獲得: <span id="score">0</span> 円</div>
-      <div class="info small">ハイスコア: <span id="high">0</span> 円</div>
+      <div style="font-size:13px">獲得: <span id="score">0</span> 円</div>
+      <div style="font-size:13px">ハイスコア: <span id="high">0</span> 円</div>
       <button id="startBtn">スタート</button>
     </div>
   </header>
@@ -44,26 +38,25 @@ button.secondary{background:#666}
     <button class="tp-btn" id="leftBtn">◀</button>
     <button class="tp-btn" id="rightBtn">▶</button>
   </div>
-  <div class="footer">左右キー / A D / タッチで移動。スペースで追加ジャンプ。画面上部に行くほど足場はまばらになりますが、必ず登れるよう調整されています。</div>
 </div>
 
-<!-- overlay -->
 <div id="overlay" class="overlay hidden">
-  <div class="panel" id="panelContent">
-    <div style="font-weight:700;font-size:16px">遊び方</div>
-    <div style="margin-top:8px">左右キーまたは画面のボタンで移動します。足場に着地すると自動でジャンプします（スペースで強制ジャンプも可）。コインを取ると50円。落ちたらゲームオーバーです。</div>
-    <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
-      <button id="startFromPanel">ゲーム開始</button>
-    </div>
-  </div>
+  <div class="panel" id="panelContent"></div>
 </div>
 <div id="confettiArea" class="confetti"></div>
 
 <script>
 // --- 設定 ---
-const CAT_IMAGE_PATH = 'cat.png'; // ここに画像を置けば自動で読み込みます
+const CAT_IMAGE_PATH = 'cat.png';
+const BGM_PATH = 'bgm.mp3'; // ループBGMのパス
+const GAMEOVER_SOUND_PATH = 'gameover.mp3'; // ゲームオーバー時の効果音パス
 const COIN_VALUE = 50;
 const STORAGE_KEY = 'neko_jump_highscore_v1';
+
+// BGM & 効果音
+let bgm = new Audio(BGM_PATH);
+bgm.loop = true;
+let gameoverSound = new Audio(GAMEOVER_SOUND_PATH);
 
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -78,14 +71,14 @@ let W = canvas.width, H = canvas.height;
 let keys = {left:false,right:false};
 let touchLeft=false,touchRight=false;
 
-// --- ゲーム状態 ---
+// ゲーム状態
 let player, platforms, coins, score, highScore, running, started, lastTime;
 
-// load highscore
+// スコア読み込み
 highScore = parseInt(localStorage.getItem(STORAGE_KEY) || '0',10) || 0;
 highEl.textContent = highScore;
 
-// load image (optional)
+// 猫画像
 let catImg = new Image();
 let catLoaded = false;
 catImg.src = CAT_IMAGE_PATH;
@@ -107,12 +100,9 @@ function resetGame(){
 }
 
 function ensureStartingPlatforms(){
-  // 地面に相当する大きな足場
   platforms.push({ x: Math.floor(W*0.15), y: H - 36, w: Math.floor(W*0.7), h:12, moving:false, dir:1 });
-  // 数個の足場を必ず用意（左→右に上がれるように）
   platforms.push({ x: W/2 - 80, y: H - 140, w:120, h:12, moving:false, dir:1 });
   platforms.push({ x: W/2 + 100, y: H - 240, w:100, h:12, moving:false, dir:1 });
-  // コインをいくつか置く
   coins.push({ x: W/2 - 20, y: H - 160, r:9, claimed:false });
   coins.push({ x: W/2 + 140, y: H - 260, r:9, claimed:false });
 }
@@ -120,7 +110,6 @@ function ensureStartingPlatforms(){
 function startGame(){
   resetGame();
   ensureStartingPlatforms();
-  // place player above the main platform
   player.x = W/2;
   player.y = H - 220;
   running = true;
@@ -128,22 +117,22 @@ function startGame(){
   lastTime = null;
   overlay.classList.add('hidden');
   startBtn.disabled = true;
+  bgm.currentTime = 0;
+  bgm.play().catch(()=>{});
   requestAnimationFrame(loop);
 }
 
 function spawnPlatformsIfNeeded(){
-  // 画面上方へ常に一定量まで生成
   const minY = platforms.length ? Math.min(...platforms.map(p=>p.y)) : H;
-  const genTarget = -1200; // 画面外遠くまで生成
+  const genTarget = -1200;
   let highest = minY;
   while(highest > genTarget){
-    const step = rand(80, 160); // vertical spacing
+    const step = rand(80, 160);
     const newY = highest - step;
     const w = rand(60, 160);
-    // base from last highest platform
     const last = platforms.reduce((a,b)=> a.y < b.y ? a : b, platforms[0]);
     const baseX = last ? (last.x + last.w/2) : W/2;
-    const maxXOffset = 160; // reachable horizontal offset
+    const maxXOffset = 160;
     let x = clamp(baseX + rand(-maxXOffset, maxXOffset) - w/2, 12, W - w - 12);
     const moving = Math.random() < 0.12;
     platforms.push({ x:x, y:newY, w:w, h:12, moving:moving, dir: Math.random()<0.5?1:-1 });
@@ -156,41 +145,31 @@ function spawnPlatformsIfNeeded(){
 
 function update(dt){
   if(!running) return;
-  // horizontal input
   const targetVx = (keys.left||touchLeft) ? -260 : (keys.right||touchRight) ? 260 : 0;
   player.vx += (targetVx - player.vx) * 0.12;
-  // gravity
   player.vy += 2000 * dt;
-  // integrate
   player.x += player.vx * dt;
   player.y += player.vy * dt;
   player.x = clamp(player.x, 20, W-20);
 
-  // simple platform movement
   for(const p of platforms){
     if(p.moving){ p.x += p.dir * 60 * dt; if(p.x < 8) p.dir = 1; if(p.x + p.w > W-8) p.dir = -1; }
   }
 
-  // collision detection (only when falling)
   player.onGround = false;
   const prevBottom = player.y - player.vy*dt + player.h/2;
   const curBottom = player.y + player.h/2;
   for(const p of platforms){
     const platTop = p.y;
     if(prevBottom <= platTop && curBottom >= platTop){
-      // horizontal overlap
       if(player.x + player.w/2 > p.x && player.x - player.w/2 < p.x + p.w){
-        // land on platform
         player.y = platTop - player.h/2;
-        player.vy = -820; // auto jump boost
+        player.vy = -820;
         player.onGround = true;
       }
     }
   }
 
-  // manual jump (space) handled in keydown
-
-  // coins
   for(const c of coins){
     if(c.claimed) continue;
     const dx = player.x - c.x;
@@ -202,24 +181,19 @@ function update(dt){
     }
   }
 
-  // camera: if player goes above threshold, move world down
   const upper = H * 0.35;
   if(player.y < upper){
     const diff = upper - player.y;
     player.y = upper;
-    // move platforms and coins down so it *feels* like we go up
     for(const p of platforms) p.y += diff;
     for(const c of coins) c.y += diff;
   }
 
-  // remove platforms and coins far below
   platforms = platforms.filter(p => p.y < H + 300);
   coins = coins.filter(c => !c.claimed && c.y < H + 300);
 
-  // spawn ahead
   spawnPlatformsIfNeeded();
 
-  // lose if fall below screen
   if(player.y - player.h/2 > H + 80){
     endGame();
   }
@@ -227,18 +201,13 @@ function update(dt){
 
 function draw(){
   ctx.clearRect(0,0,W,H);
-  // background subtle
-  // draw platforms
   for(const p of platforms){
     ctx.fillStyle = '#7a5a3c';
     ctx.fillRect(p.x, p.y - p.h, p.w, p.h);
     ctx.fillStyle = '#cfa';
     ctx.fillRect(p.x+4, p.y - p.h - 6, p.w-8, 6);
   }
-  // coins
   for(const c of coins){ if(c.claimed) continue; ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI*2); ctx.fillStyle='#ffd700'; ctx.fill(); ctx.strokeStyle='#c78f00'; ctx.stroke(); }
-
-  // player
   const px = player.x, py = player.y;
   if(catLoaded){ ctx.drawImage(catImg, px - player.w/2, py - player.h/2, player.w, player.h); }
   else {
@@ -262,6 +231,9 @@ function endGame(){
   running = false;
   started = false;
   startBtn.disabled = false;
+  bgm.pause();
+  gameoverSound.currentTime = 0;
+  gameoverSound.play().catch(()=>{});
   let earned = score;
   let newHigh = false;
   if(earned > highScore){
@@ -282,66 +254,16 @@ function showResultPanel(earned, newHigh){
   const retry = document.createElement('button'); retry.textContent = 'もう一度プレイ'; retry.className='secondary'; retry.style.marginLeft='8px'; retry.onclick = ()=>{ overlay.classList.add('hidden'); startGame(); };
   panelContent.appendChild(title); panelContent.appendChild(text); panelContent.appendChild(hs); panelContent.appendChild(btn); panelContent.appendChild(retry);
   overlay.classList.remove('hidden');
-  if(newHigh && earned>0) triggerConfetti();
 }
 
-function triggerConfetti(){
-  confettiArea.innerHTML = '';
-  const N = 40;
-  for(let i=0;i<N;i++){
-    const el = document.createElement('i');
-    el.style.position = 'absolute';
-    el.style.left = Math.random()*100 + '%';
-    el.style.top = Math.random()*20 + '%';
-    el.style.background = `hsl(${Math.random()*360} 80% 60%)`;
-    el.style.transform = `rotate(${Math.random()*360}deg)`;
-    el.style.opacity = 1;
-    el.style.width = Math.random()*10+6+'px';
-    el.style.height = Math.random()*12+8+'px';
-    confettiArea.appendChild(el);
-    const dx = (Math.random()*2-1)*200;
-    const dy = 600 + Math.random()*400;
-    el.animate([
-      { transform: el.style.transform, opacity:1, top: el.style.top },
-      { transform: `translate(${dx}px, ${dy}px) rotate(${Math.random()*720}deg)`, opacity:0, top: (60+Math.random()*40) + '%' }
-    ], { duration:1200+Math.random()*800, easing:'cubic-bezier(.2,.8,.2,1)' });
-  }
-  setTimeout(()=>{ confettiArea.innerHTML=''; }, 2000);
-}
+startBtn.addEventListener('click', startGame);
+document.getElementById('leftBtn').addEventListener('touchstart', e=>{ e.preventDefault(); touchLeft=true; });
+document.getElementById('leftBtn').addEventListener('touchend', e=>{ e.preventDefault(); touchLeft=false; });
+document.getElementById('rightBtn').addEventListener('touchstart', e=>{ e.preventDefault(); touchRight=true; });
+document.getElementById('rightBtn').addEventListener('touchend', e=>{ e.preventDefault(); touchRight=false; });
 
-// --- input ---
-window.addEventListener('keydown', e=>{
-  if(e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A'){ keys.left = true; }
-  if(e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D'){ keys.right = true; }
-  if(e.key === ' ' || e.code === 'Space'){
-    if(player && player.onGround){ player.vy = -980; player.onGround = false; }
-  }
-});
-window.addEventListener('keyup', e=>{ if(e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A'){ keys.left = false; } if(e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D'){ keys.right = false; } });
-
-// touch buttons
-const leftBtn = document.getElementById('leftBtn'), rightBtn = document.getElementById('rightBtn');
-leftBtn.addEventListener('touchstart', e=>{ e.preventDefault(); touchLeft = true; }); leftBtn.addEventListener('touchend', e=>{ e.preventDefault(); touchLeft = false; });
-rightBtn.addEventListener('touchstart', e=>{ e.preventDefault(); touchRight = true; }); rightBtn.addEventListener('touchend', e=>{ e.preventDefault(); touchRight = false; });
-leftBtn.addEventListener('mousedown', ()=>{ touchLeft = true }); leftBtn.addEventListener('mouseup', ()=>{ touchLeft = false });
-rightBtn.addEventListener('mousedown', ()=>{ touchRight = true }); rightBtn.addEventListener('mouseup', ()=>{ touchRight = false });
-
-// start buttons
-startBtn.addEventListener('click', ()=>{ if(!started) startGame(); });
-document.getElementById('startFromPanel').addEventListener('click', ()=>{ overlay.classList.add('hidden'); startGame(); });
-
-// resize
-function onResize(){ const rect = canvas.getBoundingClientRect(); W = canvas.width = Math.floor(rect.width) || 480; H = canvas.height = 640; }
-window.addEventListener('resize', onResize); onResize();
-
-// initial setup
-resetGame();
-panelContent.querySelector('#startFromPanel').addEventListener('click', ()=>{}); // safe guard
-overlay.classList.remove('hidden');
-// idle draw
-function idle(){ draw(); requestAnimationFrame(idle); }
-idle();
-
+document.addEventListener('keydown', e=>{ if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=true; if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=true; if(e.code==='Space' && player) player.vy=-820; });
+document.addEventListener('keyup', e=>{ if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=false; if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=false; });
 </script>
 </body>
 </html>
