@@ -421,6 +421,9 @@ let dialogueState = {
   waitingInput: false
 };
 
+// パターンキャッシュ（レンガの描画パターンを毎フレーム生成しないようにキャッシュします）
+let brickPattern = null;
+
 // ゲーム開始前イベント状態
 let gameStartEventActive = false;
 
@@ -774,8 +777,17 @@ let totalAssetsToLoad = Object.keys(ASSETS_TO_LOAD).length + CAT_RUN_PATHS.lengt
 let loadedAssetsCount = 0;
 
 
+function setupPatterns() {
+  if (gameAssets.brick) {
+    brickPattern = ctx.createPattern(gameAssets.brick, 'repeat');
+  }
+}
+
 function onAssetLoaded() {
   loadedAssetsCount++;
+  if (loadedAssetsCount >= totalAssetsToLoad) {
+    setupPatterns();
+  }
 }
 
 CAT_RUN_PATHS.forEach((path, idx) => {
@@ -888,7 +900,9 @@ for(let i=0; i<30; i++) {
 // ----------------- リサイズ & キャンバス初期化 -----------------
 function resizeCanvas() {
   const rect = canvas.getBoundingClientRect();
-  const ratio = window.devicePixelRatio || 1;
+  // 高解像度ディスプレイ（スマホのRetina画面など）でのピクセル比を最大2.0倍にクランプ制限し、
+  // 描画ピクセル数を削減することで、スマホブラウザでの描画負荷を劇的に軽量化（カクつきを解消）します。
+  const ratio = Math.min(window.devicePixelRatio || 1, 2.0);
   W = rect.width;
   H = rect.height;
   canvas.width = W * ratio;
@@ -1824,12 +1838,11 @@ function draw() {
   ctx.globalAlpha = 1.0;
   
   // 2. 左右の壁 (LANCZOS最適化シームレスレンガパターン)
-  if (gameAssets.brick) {
+  if (brickPattern) {
     ctx.save();
-    const pattern = ctx.createPattern(gameAssets.brick, 'repeat');
-    const matrix = new DOMMatrix();
-    pattern.setTransform(matrix.translate(0, scrollPos));
-    ctx.fillStyle = pattern;
+    const matrix = new DOMMatrix().translate(0, scrollPos);
+    brickPattern.setTransform(matrix);
+    ctx.fillStyle = brickPattern;
     
     // 左の壁の描画
     ctx.fillRect(0, 0, WALL_OFFSET, H);
