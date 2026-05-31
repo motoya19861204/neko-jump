@@ -394,6 +394,8 @@ const dialogueFaceImg = document.getElementById('dialogueFaceImg');
 
 let W = 480, H = 640;
 let running = false;
+let starting = false;
+let rafId = 0;
 let lastTime = 0;
 let score = 0.0; // 浮動小数点数に設定（切り捨てによるバグを防ぐ）
 let highScore = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10) || 0;
@@ -627,6 +629,7 @@ class SoundManager {
     this.poolSize = 4; // 各SE素材に対して最大4個のインスタンスをプールして使い回します
     this.pools = {};
     this.poolIndices = {};
+    this.unlocked = false;
     
     const soundSources = {
       meow: 'meow.mp3',
@@ -640,25 +643,40 @@ class SoundManager {
       this.poolIndices[key] = 0;
       for (let i = 0; i < this.poolSize; i++) {
         const audio = new Audio(soundSources[key]);
+        audio.preload = 'auto';
+        audio._playToken = 0;
+        audio._stopTimer = 0;
+        audio._fadeTimer = 0;
         audio.load();
         this.pools[key].push(audio);
       }
     });
   }
 
-  // モバイル対応（ユーザー操作時のアンロックトリガー。プール内の全音源を一発無音再生）
+  // モバイル対応（ユーザー操作時のアンロックトリガー。各SEの代表だけを無音再生）
   init() {
+    if (this.unlocked) return;
+    this.unlocked = true;
     try {
       Object.keys(this.pools).forEach(key => {
-        this.pools[key].forEach(audio => {
-          const p = audio.play();
-          if (p !== undefined) {
-            p.then(() => {
-              audio.pause();
-              audio.currentTime = 0;
-            }).catch(() => {});
-          }
-        });
+        const audio = this.pools[key][0];
+        if (!audio) return;
+        const prevMuted = audio.muted;
+        const prevVolume = audio.volume;
+        audio.muted = true;
+        audio.volume = 0;
+        const restore = () => {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.muted = prevMuted;
+          audio.volume = prevVolume;
+        };
+        const p = audio.play();
+        if (p !== undefined) {
+          p.then(restore).catch(restore);
+        } else {
+          restore();
+        }
       });
     } catch(e) {}
   }
@@ -671,12 +689,17 @@ class SoundManager {
         const idx = this.poolIndices[key];
         const audio = pool[idx];
         this.poolIndices[key] = (idx + 1) % this.poolSize;
+        audio._playToken = (audio._playToken || 0) + 1;
+        const playToken = audio._playToken;
+        if (audio._stopTimer) clearTimeout(audio._stopTimer);
+        if (audio._fadeTimer) clearTimeout(audio._fadeTimer);
         
         try {
           audio.pause();
           audio.currentTime = 0;
         } catch(e){}
         
+        audio.muted = false;
         audio.volume = volume;
         audio.playbackRate = speed;
         
@@ -687,16 +710,16 @@ class SoundManager {
 
         // 指定秒数経過後に音をカット
         if (duration !== null) {
-          setTimeout(() => {
+          audio._stopTimer = setTimeout(() => {
+            if (audio._playToken !== playToken) return;
             try {
               // 音声カット時のノイズを防ぐため、一瞬音量を下げてフェードアウト停止
               audio.volume = volume * 0.3;
-              setTimeout(() => {
-                // 上書きで次の再生が走っていない場合のみ安全に停止
-                if (audio.playbackRate === speed) {
-                  audio.pause();
-                  audio.currentTime = 0;
-                }
+              audio._fadeTimer = setTimeout(() => {
+                if (audio._playToken !== playToken) return;
+                audio.pause();
+                audio.currentTime = 0;
+                audio.volume = volume;
               }, 25);
             } catch(e) {}
           }, duration * 1000);
@@ -794,6 +817,11 @@ let furballSpecialImgs = [];
 let gameAssets = {};
 let totalAssetsToLoad = Object.keys(ASSETS_TO_LOAD).length + CAT_RUN_PATHS.length + SPECIAL_FLIGHT_PATHS.length + BALLOON_SPECIAL_PATHS.length + FURBALL_SPECIAL_PATHS.length;
 let loadedAssetsCount = 0;
+let assetsReady = false;
+let resolveAssetsReady;
+const assetsReadyPromise = new Promise(resolve => {
+  resolveAssetsReady = resolve;
+});
 
 
 function setupPatterns() {
@@ -804,61 +832,85 @@ function setupPatterns() {
 
 function onAssetLoaded() {
   loadedAssetsCount++;
-  if (loadedAssetsCount >= totalAssetsToLoad) {
+  if (!assetsReady && loadedAssetsCount >= totalAssetsToLoad) {
+    assetsReady = true;
     setupPatterns();
+    if (resolveAssetsReady) resolveAssetsReady();
+  }
+}
+
+function completeImageLoad(img, assign) {
+  const complete = () => {
+    assign(img);
+    onAssetLoaded();
+  };
+  if (img.decode) {
+    img.decode().then(complete).catch(complete);
+  } else {
+    complete();
   }
 }
 
 CAT_RUN_PATHS.forEach((path, idx) => {
   let img = new Image();
-  img.src = path;
+  img.decoding = 'async';
   img.onload = () => {
-    catRunImgs[idx] = img;
-    onAssetLoaded();
+    completeImageLoad(img, loadedImg => {
+      catRunImgs[idx] = loadedImg;
+    });
   };
   img.onerror = () => onAssetLoaded();
+  img.src = path;
 });
 
 SPECIAL_FLIGHT_PATHS.forEach((path, idx) => {
   let img = new Image();
-  img.src = path;
+  img.decoding = 'async';
   img.onload = () => {
-    specialFlightImgs[idx] = img;
-    onAssetLoaded();
+    completeImageLoad(img, loadedImg => {
+      specialFlightImgs[idx] = loadedImg;
+    });
   };
   img.onerror = () => onAssetLoaded();
+  img.src = path;
 });
 
 BALLOON_SPECIAL_PATHS.forEach((path, idx) => {
   let img = new Image();
-  img.src = path;
+  img.decoding = 'async';
   img.onload = () => {
-    balloonSpecialImgs[idx] = img;
-    onAssetLoaded();
+    completeImageLoad(img, loadedImg => {
+      balloonSpecialImgs[idx] = loadedImg;
+    });
   };
   img.onerror = () => onAssetLoaded();
+  img.src = path;
 });
 
 FURBALL_SPECIAL_PATHS.forEach((path, idx) => {
   let img = new Image();
-  img.src = path;
+  img.decoding = 'async';
   img.onload = () => {
-    furballSpecialImgs[idx] = img;
-    onAssetLoaded();
+    completeImageLoad(img, loadedImg => {
+      furballSpecialImgs[idx] = loadedImg;
+    });
   };
   img.onerror = () => onAssetLoaded();
+  img.src = path;
 });
 
 
 
 Object.keys(ASSETS_TO_LOAD).forEach(key => {
   let img = new Image();
-  img.src = ASSETS_TO_LOAD[key];
+  img.decoding = 'async';
   img.onload = () => {
-    gameAssets[key] = img;
-    onAssetLoaded();
+    completeImageLoad(img, loadedImg => {
+      gameAssets[key] = loadedImg;
+    });
   };
   img.onerror = () => onAssetLoaded();
+  img.src = ASSETS_TO_LOAD[key];
 });
 
 
@@ -1021,6 +1073,7 @@ function handlePlayerHit() {
 // ----------------- ゲームループ制御 -----------------
 function resetGame() {
   score = 0.0;
+  lastScoreVal = -1;
   scoreEl.textContent = '0m';
   enemies = [];
   obstacles = [];
@@ -1073,13 +1126,32 @@ function resetGame() {
   lastTime = 0;
 }
 
-function startGame() {
-  startScreen.classList.add('hidden');
-  overlay.classList.add('hidden');
+async function startGame() {
+  if (starting || running) return;
+  starting = true;
+  startBtn.disabled = true;
+  retryBtn.disabled = true;
   
   // ユーザー操作のタイミングでオーディオコンテキストをアンロック/初期化
   se.init();
   
+  try {
+    if (!assetsReady) {
+      const originalText = startBtn.textContent;
+      startBtn.textContent = '読み込み中...';
+      await assetsReadyPromise;
+      startBtn.textContent = originalText;
+    }
+  } finally {
+    startBtn.disabled = false;
+    retryBtn.disabled = false;
+    starting = false;
+  }
+
+  if (running) return;
+  startScreen.classList.add('hidden');
+  overlay.classList.add('hidden');
+
   // 地響き等の既存シンセ停止、すべての音響を完全にリセット
   bossIntroSynth.stop();
   try {
@@ -1106,11 +1178,16 @@ function startGame() {
     } catch(e) {}
   });
   
-  requestAnimationFrame(loop);
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(loop);
 }
 
 function gameOver() {
   running = false;
+  if (rafId) {
+    cancelAnimationFrame(rafId);
+    rafId = 0;
+  }
   gameStartEventActive = false;
   bossIntroSynth.stop();
   try { bgm.pause(); } catch(e) {}
@@ -2130,15 +2207,22 @@ function draw() {
 }
 
 function loop(ts) {
-  if (!running) return;
+  if (!running) {
+    rafId = 0;
+    return;
+  }
   if (!lastTime) lastTime = ts;
   let dt = (ts - lastTime) / 1000;
   if (dt > 0.05) dt = 0.05;
   lastTime = ts;
   
   update(dt);
+  if (!running) {
+    rafId = 0;
+    return;
+  }
   draw();
-  requestAnimationFrame(loop);
+  rafId = requestAnimationFrame(loop);
 }
 
 // ----------------- 入力処理 (INPUT) -----------------
