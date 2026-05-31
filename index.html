@@ -427,6 +427,9 @@ let brickPattern = null;
 // ゲーム開始前イベント状態
 let gameStartEventActive = false;
 
+// DOM更新軽量化用のスコアキャッシュ変数
+let lastScoreVal = -1;
+
 // ボス状態オブジェクト
 let bossTriggered = false;
 let boss = {
@@ -621,62 +624,79 @@ function updateDialogue(dt) {
 // ----------------- 音響 ＆ 効果音マネージャー (SE) -----------------
 class SoundManager {
   constructor() {
-    this.sounds = {
-      meow: new Audio('meow.mp3'),
-      jump: new Audio('jump.mp3'),
-      hit: new Audio('hit.mp3'),
-      dash: new Audio('dash.mp3')
+    this.poolSize = 4; // 各SE素材に対して最大4個のインスタンスをプールして使い回します
+    this.pools = {};
+    this.poolIndices = {};
+    
+    const soundSources = {
+      meow: 'meow.mp3',
+      jump: 'jump.mp3',
+      hit: 'hit.mp3',
+      dash: 'dash.mp3'
     };
     
-    // 事前ロード
-    Object.keys(this.sounds).forEach(key => {
-      this.sounds[key].load();
+    Object.keys(soundSources).forEach(key => {
+      this.pools[key] = [];
+      this.poolIndices[key] = 0;
+      for (let i = 0; i < this.poolSize; i++) {
+        const audio = new Audio(soundSources[key]);
+        audio.load();
+        this.pools[key].push(audio);
+      }
     });
   }
 
-  // モバイル対応（ユーザー操作時のアンロックトリガー）
+  // モバイル対応（ユーザー操作時のアンロックトリガー。プール内の全音源を一発無音再生）
   init() {
     try {
-      Object.keys(this.sounds).forEach(key => {
-        const sound = this.sounds[key];
-        if (sound) {
-          // 無音でのダミー再生を走らせることで、iOS/Androidの音声ミュート制限を解除します
-          const p = sound.play();
+      Object.keys(this.pools).forEach(key => {
+        this.pools[key].forEach(audio => {
+          const p = audio.play();
           if (p !== undefined) {
             p.then(() => {
-              sound.pause();
-              sound.currentTime = 0;
+              audio.pause();
+              audio.currentTime = 0;
             }).catch(() => {});
           }
-        }
+        });
       });
     } catch(e) {}
   }
 
   play(key, volume = 0.5, speed = 1.0, duration = null) {
     try {
-      const sound = this.sounds[key];
-      if (sound) {
-        // 重複同時再生を可能にするためにクローンを生成してポリフォニック再生します
-        const clone = sound.cloneNode();
-        clone.volume = volume;
-        clone.playbackRate = speed; // 再生速度（ピッチ）の動的変更
+      const pool = this.pools[key];
+      if (pool) {
+        // プール内のAudioオブジェクトを順番にローテーションして再利用（GC負荷をゼロにします）
+        const idx = this.poolIndices[key];
+        const audio = pool[idx];
+        this.poolIndices[key] = (idx + 1) % this.poolSize;
         
-        const p = clone.play();
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+        } catch(e){}
+        
+        audio.volume = volume;
+        audio.playbackRate = speed;
+        
+        const p = audio.play();
         if (p !== undefined) {
           p.catch(e => console.log("SE play blocked:", e));
         }
 
-        // 指定秒数（duration）経過後に、音量を下げて強制停止・メモリ解放処理を行います
+        // 指定秒数経過後に音をカット
         if (duration !== null) {
           setTimeout(() => {
             try {
-              // クリックノイズ（ブツ切り音）を防ぐため、一瞬フェードアウトさせてから停止します
-              clone.volume = volume * 0.3;
+              // 音声カット時のノイズを防ぐため、一瞬音量を下げてフェードアウト停止
+              audio.volume = volume * 0.3;
               setTimeout(() => {
-                clone.pause();
-                clone.currentTime = 0;
-                clone.remove(); // クローンの破棄
+                // 上書きで次の再生が走っていない場合のみ安全に停止
+                if (audio.playbackRate === speed) {
+                  audio.pause();
+                  audio.currentTime = 0;
+                }
               }, 25);
             } catch(e) {}
           }, duration * 1000);
@@ -687,23 +707,22 @@ class SoundManager {
     }
   }
 
-  // 猫のジャンプ掛け声（再生速度を1.6倍にして0.13秒でカットすることで、長い鳴き声を「ニャッ！」という極めて切れ味の鋭い声に劇的リファクタリング）
+  // 猫のジャンプ掛け声（切れ味鋭い「にゃっ！」と「ピョッ！」）
   playJump() {
-    this.play('meow', 0.75, 1.6, 0.13); // 「にゃっ！」という鋭い鳴き声
-    this.play('jump', 0.45, 1.3, 0.22); // 「ピョッ！」という軽快な弾み音
+    this.play('meow', 0.75, 1.6, 0.13);
+    this.play('jump', 0.45, 1.3, 0.22);
   }
 
-  // 敵撃破ひっかき音（1.2倍速で0.2秒でカットし、スパッと鋭い「シャキッ！」に仕上げる）
+  // ひっかき撃破音（スパッと鋭い「シャキッ！」）
   playHit() {
     this.play('hit', 0.65, 1.25, 0.2);
   }
 
-  // 必殺技発動音（1.15倍速で0.65秒でカットし、派手に「ピキィィーン！」と鳴り響かせつつ長引かせない）
+  // 必殺技発動音
   playDashStart() {
     this.play('dash', 0.7, 1.15, 0.65);
   }
 
-  // 後方互換用のダミー関数
   playDashLoop(duration) {
   }
 }
@@ -902,7 +921,7 @@ function resizeCanvas() {
   const rect = canvas.getBoundingClientRect();
   // 高解像度ディスプレイ（スマホのRetina画面など）でのピクセル比を最大2.0倍にクランプ制限し、
   // 描画ピクセル数を削減することで、スマホブラウザでの描画負荷を劇的に軽量化（カクつきを解消）します。
-  const ratio = Math.min(window.devicePixelRatio || 1, 2.0);
+  const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
   W = rect.width;
   H = rect.height;
   canvas.width = W * ratio;
@@ -940,7 +959,8 @@ function updateComboUI() {
 }
 
 function spawnParticle(x, y, color, speedScale = 1, count = 8) {
-  for(let i=0; i<count; i++) {
+  const finalCount = Math.min(count, 12);
+  for(let i=0; i<finalCount; i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = (Math.random() * 4 + 2) * speedScale;
     particles.push({
@@ -953,6 +973,9 @@ function spawnParticle(x, y, color, speedScale = 1, count = 8) {
       size: Math.random() * 5 + 3,
       color: color
     });
+  }
+  if (particles.length > 100) {
+    particles.splice(0, particles.length - 100);
   }
 }
 
@@ -1113,7 +1136,7 @@ function gameOver() {
 // ----------------- オブジェクト出現ロジック -----------------
 let spawnTimer = 0;
 function handleSpawning(dt, gameSpeed) {
-  if (player.state === 'hurt' || boss.active) return;
+  if (player.state === 'hurt' || player.state === 'dash' || boss.active) return;
   
   const currentHeight = Math.floor(score);
   // 難易度の自動上昇を廃止し、「ボスを倒した回数（撃破フラグ）」に基づいて出現間隔を変更
@@ -1455,7 +1478,11 @@ function update(dt) {
   
   // 【仕様修正：メガダッシュ（必殺技）の最中も、その超高速な進行速度（2200px/s）に合わせて高度メーターをモリモリ超高速加算・カウントアップする！】
   score += dt * (gameSpeed / 8.0);
-  scoreEl.textContent = Math.floor(score) + 'm';
+  const displayScore = Math.floor(score);
+  if (displayScore !== lastScoreVal) {
+    lastScoreVal = displayScore;
+    scoreEl.textContent = displayScore + 'm';
+  }
   
   // 5000m突破でボス降臨
   if (!bossTriggered && score >= BOSS_TRIGGER_SCORE && player.state !== 'hurt') {
@@ -1512,7 +1539,7 @@ function update(dt) {
       player.y -= 1200 * dt;
     }
     
-    if (Math.random() < 0.3) {
+    if (Math.random() < 0.12) {
       spawnParticle(player.x, player.y + 30, '#bd34eb', 0.5, 3);
     }
     
