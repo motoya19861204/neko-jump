@@ -638,8 +638,6 @@ class SoundManager {
     this.useWebAudio = !!(window.AudioContext || window.webkitAudioContext);
     
     this.soundSources = {
-      meow: 'meow.mp3',
-      jump: 'jump.mp3',
       hit: 'hit.mp3',
       dash: 'dash.mp3'
     };
@@ -836,8 +834,6 @@ class SoundManager {
 
   // 猫のジャンプ掛け声（切れ味鋭い「にゃっ！」と「ピョッ！」）
   playJump() {
-    this.play('meow', 0.75, 1.6, 0.13);
-    this.play('jump', 0.45, 1.3, 0.22);
   }
 
   // ひっかき撃破音（スパッと鋭い「シャキッ！」）
@@ -1144,7 +1140,6 @@ function flushDeferredEffects() {
   while (pendingJumpEffects > 0) {
     pendingJumpEffects--;
     spawnParticle(player.x, player.y, 'rgba(255,255,255,0.4)', 0.5, 3);
-    se.playJump();
   }
 }
 
