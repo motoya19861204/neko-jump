@@ -626,24 +626,32 @@ function updateDialogue(dt) {
 // ----------------- 音響 ＆ 効果音マネージャー (SE) -----------------
 class SoundManager {
   constructor() {
-    this.poolSize = 4; // 各SE素材に対して最大4個のインスタンスをプールして使い回します
+    this.poolSize = 4;
     this.pools = {};
     this.poolIndices = {};
     this.unlocked = false;
     this.unlockPromise = Promise.resolve();
+    this.audioContext = null;
+    this.buffers = {};
+    this.arrayBuffers = {};
+    this.arrayBufferPromises = {};
+    this.useWebAudio = !!(window.AudioContext || window.webkitAudioContext);
     
-    const soundSources = {
+    this.soundSources = {
       meow: 'meow.mp3',
       jump: 'jump.mp3',
       hit: 'hit.mp3',
       dash: 'dash.mp3'
     };
     
-    Object.keys(soundSources).forEach(key => {
+    Object.keys(this.soundSources).forEach(key => {
+      if (this.useWebAudio) {
+        this.arrayBufferPromises[key] = this.fetchSoundData(key);
+      }
       this.pools[key] = [];
       this.poolIndices[key] = 0;
       for (let i = 0; i < this.poolSize; i++) {
-        const audio = new Audio(soundSources[key]);
+        const audio = new Audio(this.soundSources[key]);
         audio.preload = 'auto';
         audio._playToken = 0;
         audio._stopTimer = 0;
@@ -654,11 +662,71 @@ class SoundManager {
     });
   }
 
-  // モバイル対応（ユーザー操作時のアンロックトリガー。各SEの代表だけを無音再生）
+  fetchSoundData(key) {
+    if (!window.fetch) return Promise.resolve(null);
+    return fetch(this.soundSources[key])
+      .then(response => {
+        if (!response.ok) throw new Error(`SE load failed: ${key}`);
+        return response.arrayBuffer();
+      })
+      .then(buffer => {
+        this.arrayBuffers[key] = buffer;
+        return buffer;
+      })
+      .catch(() => null);
+  }
+
+  async unlockWebAudio() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return false;
+    if (!this.audioContext) {
+      this.audioContext = new AudioContextClass();
+    }
+    if (this.audioContext.state === 'suspended') {
+      await Promise.race([
+        this.audioContext.resume().catch(() => {}),
+        new Promise(resolve => setTimeout(resolve, 120))
+      ]);
+    }
+
+    try {
+      const silent = this.audioContext.createBuffer(1, 1, this.audioContext.sampleRate);
+      const source = this.audioContext.createBufferSource();
+      source.buffer = silent;
+      source.connect(this.audioContext.destination);
+      source.start(0);
+    } catch(e) {}
+
+    await Promise.all(Object.keys(this.soundSources).map(key => this.decodeSound(key)));
+    return true;
+  }
+
+  async decodeSound(key) {
+    if (this.buffers[key] || !this.audioContext) return this.buffers[key] || null;
+    const loaded = await (this.arrayBufferPromises[key] || Promise.resolve(null));
+    const sourceBuffer = loaded || this.arrayBuffers[key];
+    if (!sourceBuffer) return null;
+    try {
+      const decoded = await this.audioContext.decodeAudioData(sourceBuffer.slice(0));
+      this.buffers[key] = decoded;
+      return decoded;
+    } catch(e) {
+      return null;
+    }
+  }
+
+  // モバイル対応（ユーザー操作時にWeb Audioを解錠し、短いSEを事前decode）
   init() {
     if (this.unlocked) return;
     this.unlocked = true;
-    const unlockTasks = [];
+    if (this.useWebAudio) {
+      this.unlockPromise = Promise.race([
+        this.unlockWebAudio(),
+        new Promise(resolve => setTimeout(resolve, 600))
+      ]);
+      return;
+    }
+
     try {
       Object.keys(this.pools).forEach(key => {
         const audio = this.pools[key][0];
@@ -678,24 +746,47 @@ class SoundManager {
         };
         const p = audio.play();
         if (p !== undefined) {
-          unlockTasks.push(p.then(restore).catch(restore));
+          p.then(restore).catch(restore);
         } else {
           restore();
         }
       });
     } catch(e) {}
-    this.unlockPromise = Promise.race([
-      Promise.allSettled(unlockTasks),
-      new Promise(resolve => setTimeout(resolve, 250))
-    ]);
   }
 
   waitForUnlock() {
     return this.unlockPromise;
   }
 
+  playWebAudio(key, volume, speed, duration) {
+    const buffer = this.buffers[key];
+    const ctxAudio = this.audioContext;
+    if (!buffer || !ctxAudio) return true;
+
+    const source = ctxAudio.createBufferSource();
+    const gain = ctxAudio.createGain();
+    source.buffer = buffer;
+    source.playbackRate.value = speed;
+    gain.gain.setValueAtTime(volume, ctxAudio.currentTime);
+    source.connect(gain);
+    gain.connect(ctxAudio.destination);
+    source.start();
+
+    if (duration !== null) {
+      const stopAt = ctxAudio.currentTime + duration;
+      gain.gain.setValueAtTime(volume, ctxAudio.currentTime);
+      gain.gain.linearRampToValueAtTime(volume * 0.3, stopAt);
+      source.stop(stopAt + 0.03);
+    }
+    return true;
+  }
+
   play(key, volume = 0.5, speed = 1.0, duration = null) {
     try {
+      if (this.useWebAudio && this.audioContext) {
+        const handled = this.playWebAudio(key, volume, speed, duration);
+        if (handled) return;
+      }
       const pool = this.pools[key];
       if (pool) {
         // プール内のAudioオブジェクトを順番にローテーションして再利用（GC負荷をゼロにします）
