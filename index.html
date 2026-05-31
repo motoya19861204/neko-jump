@@ -630,6 +630,7 @@ class SoundManager {
     this.pools = {};
     this.poolIndices = {};
     this.unlocked = false;
+    this.unlockPromise = Promise.resolve();
     
     const soundSources = {
       meow: 'meow.mp3',
@@ -657,15 +658,19 @@ class SoundManager {
   init() {
     if (this.unlocked) return;
     this.unlocked = true;
+    const unlockTasks = [];
     try {
       Object.keys(this.pools).forEach(key => {
         const audio = this.pools[key][0];
         if (!audio) return;
+        audio._playToken = (audio._playToken || 0) + 1;
+        const unlockToken = audio._playToken;
         const prevMuted = audio.muted;
         const prevVolume = audio.volume;
         audio.muted = true;
         audio.volume = 0;
         const restore = () => {
+          if (audio._playToken !== unlockToken) return;
           audio.pause();
           audio.currentTime = 0;
           audio.muted = prevMuted;
@@ -673,12 +678,20 @@ class SoundManager {
         };
         const p = audio.play();
         if (p !== undefined) {
-          p.then(restore).catch(restore);
+          unlockTasks.push(p.then(restore).catch(restore));
         } else {
           restore();
         }
       });
     } catch(e) {}
+    this.unlockPromise = Promise.race([
+      Promise.allSettled(unlockTasks),
+      new Promise(resolve => setTimeout(resolve, 250))
+    ]);
+  }
+
+  waitForUnlock() {
+    return this.unlockPromise;
   }
 
   play(key, volume = 0.5, speed = 1.0, duration = null) {
@@ -957,6 +970,7 @@ let particles = [];
 let screenShake = 0;
 let hitStop = 0;
 let backgroundStars = [];
+let pendingJumpEffects = 0;
 
 // 星屑背景の初期化
 for(let i=0; i<30; i++) {
@@ -1031,6 +1045,18 @@ function spawnParticle(x, y, color, speedScale = 1, count = 8) {
   }
 }
 
+function queueJumpEffects() {
+  pendingJumpEffects = Math.min(pendingJumpEffects + 1, 2);
+}
+
+function flushDeferredEffects() {
+  while (pendingJumpEffects > 0) {
+    pendingJumpEffects--;
+    spawnParticle(player.x, player.y, 'rgba(255,255,255,0.4)', 0.5, 3);
+    se.playJump();
+  }
+}
+
 function addScratchEffect(x, y) {
   particles.push({
     type: 'scratch',
@@ -1078,6 +1104,7 @@ function resetGame() {
   enemies = [];
   obstacles = [];
   particles = [];
+  pendingJumpEffects = 0;
   combo.type = 'none';
   combo.count = 0;
   updateComboUI();
@@ -1136,11 +1163,15 @@ async function startGame() {
   se.init();
   
   try {
+    const startupTasks = [se.waitForUnlock()];
     if (!assetsReady) {
       const originalText = startBtn.textContent;
       startBtn.textContent = '読み込み中...';
-      await assetsReadyPromise;
+      startupTasks.push(assetsReadyPromise);
+      await Promise.all(startupTasks);
       startBtn.textContent = originalText;
+    } else {
+      await Promise.all(startupTasks);
     }
   } finally {
     startBtn.disabled = false;
@@ -2222,6 +2253,7 @@ function loop(ts) {
     return;
   }
   draw();
+  flushDeferredEffects();
   rafId = requestAnimationFrame(loop);
 }
 
@@ -2243,23 +2275,22 @@ function triggerJump() {
   if (player.state === 'run') {
     player.state = 'jump';
     player.jumpProgress = 0;
-    spawnParticle(player.x, player.y, 'rgba(255,255,255,0.4)', 0.5, 4);
-    
-    // 猫のジャンプ時掛け声SEの再生
-    se.playJump();
+    queueJumpEffects();
   }
 }
 
-canvas.addEventListener('touchstart', (e) => {
+function handlePrimaryInput(e) {
   e.preventDefault();
   if (handleDialogueInteraction()) return;
   triggerJump();
-});
-canvas.addEventListener('mousedown', (e) => {
-  e.preventDefault();
-  if (handleDialogueInteraction()) return;
-  triggerJump();
-});
+}
+
+if (window.PointerEvent) {
+  canvas.addEventListener('pointerdown', handlePrimaryInput);
+} else {
+  canvas.addEventListener('touchstart', handlePrimaryInput);
+  canvas.addEventListener('mousedown', handlePrimaryInput);
+}
 
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Space') {
