@@ -446,6 +446,9 @@ const BGM_PATH = '通常BGM.mp3';
 const GAMEOVER_SOUND_PATH = 'gameover.mp3';
 const STORAGE_KEY = 'cat_jump_highscore';
 const BOSS_TRIGGER_SCORE = 5000; // ボス出現高度
+const BOSS_BIRD_COLS = 5;
+const BOSS_BIRD_ROWS = 2;
+const BOSS_BIRD_FRAMES = BOSS_BIRD_COLS * BOSS_BIRD_ROWS;
 
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -521,8 +524,8 @@ let boss = {
   x: 240,
   y: -150,
   targetY: 140, // 降臨の目標位置
-  w: 180,
-  h: 180,
+  w: 240,
+  h: 240,
   hp: 3,
   maxHp: 3,
   defeatedCount: 0, // 難易度上昇に利用
@@ -1000,7 +1003,8 @@ const ASSETS_TO_LOAD = {
   yarn: 'yarn.png',
   collar: 'collar.png',
   shield: 'shield.png',
-  brick: 'brick-wall.png'
+  brick: 'brick-wall.png',
+  bossBird: 'boss-bird-transparent.png'
 };
 
 const CAT_RUN_PATHS = [
@@ -2127,7 +2131,7 @@ function update(dt) {
       boss.animTimer += dt;
       if (boss.animTimer > 0.3) {
         boss.animTimer = 0;
-        boss.animFrame = (boss.animFrame + 1) % 2;
+        boss.animFrame = (boss.animFrame + 1) % BOSS_BIRD_FRAMES;
       }
       
       // 猫は止まり、アニメも静止
@@ -2153,7 +2157,7 @@ function update(dt) {
       boss.animTimer += dt;
       if (boss.animTimer > 0.2) {
         boss.animTimer = 0;
-        boss.animFrame = (boss.animFrame + 1) % 2;
+        boss.animFrame = (boss.animFrame + 1) % BOSS_BIRD_FRAMES;
       }
       
       // ボスは敵を1体ずつ召喚する
@@ -2504,14 +2508,23 @@ function draw() {
     
     ctx.translate(bx, by);
     
-    const bossFrame = (boss.animFrame === 0) ? gameAssets.crow0 : gameAssets.crow1;
+    const bossFrame = gameAssets.bossBird || ((boss.animFrame === 0) ? gameAssets.crow0 : gameAssets.crow1);
     if (bossFrame) {
       ctx.save();
       if (boss.state === 'defeat') {
         ctx.globalAlpha = Math.max(0, boss.timer / 2.4);
       }
       ctx.scale(boss.side, 1);
-      ctx.drawImage(bossFrame, -boss.w / 2, -boss.h / 2, boss.w, boss.h);
+      if (gameAssets.bossBird) {
+        const frameIndex = boss.animFrame % BOSS_BIRD_FRAMES;
+        const frameW = bossFrame.width / BOSS_BIRD_COLS;
+        const frameH = bossFrame.height / BOSS_BIRD_ROWS;
+        const sx = (frameIndex % BOSS_BIRD_COLS) * frameW;
+        const sy = Math.floor(frameIndex / BOSS_BIRD_COLS) * frameH;
+        ctx.drawImage(bossFrame, sx, sy, frameW, frameH, -boss.w / 2, -boss.h / 2, boss.w, boss.h);
+      } else {
+        ctx.drawImage(bossFrame, -boss.w / 2, -boss.h / 2, boss.w, boss.h);
+      }
       
       // 赤被弾フラッシュ（Canvas 2Dでの高品質重ね合わせ）
       if (boss.hurtTimer > 0 && Math.floor(boss.hurtTimer * 24) % 2 === 0) {
