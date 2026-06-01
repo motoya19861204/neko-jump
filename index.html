@@ -531,7 +531,8 @@ let boss = {
   animFrame: 0,
   animTimer: 0,
   side: 1,
-  hurtTimer: 0 // 被弾時の赤点滅＆ブレ演出用
+  hurtTimer: 0, // 被弾時の赤点滅＆ブレ演出用
+  defeatPhase: 'none'
 };
 
 // Web Audio APIによる地響き＆サイレン合成シンセサイザー
@@ -1411,6 +1412,7 @@ function resetGame() {
   boss.animTimer = 0;
   boss.side = 1;
   boss.hurtTimer = 0;
+  boss.defeatPhase = 'none';
 
   // 開始イベント状態
   gameStartEventActive = false;
@@ -1554,16 +1556,17 @@ function handleSpawning(dt, gameSpeed) {
       const ratSides = [WALL_OFFSET + 10, W / 2, W - WALL_OFFSET - 10];
       const chosenX = ratSides[Math.floor(Math.random() * ratSides.length)];
       
-      enemies.push({
-        type: 'rat',
-        x: chosenX,
-        initialX: chosenX,
-        y: -50,
-        w: 46,
-        h: 76,
-        timer: 0,
-        phase: Math.random() * Math.PI * 2,
-        animFrame: 0,
+        enemies.push({
+          type: 'rat',
+          x: chosenX,
+          initialX: chosenX,
+          y: -50,
+          w: 46,
+          h: 76,
+          vy: 105,
+          timer: 0,
+          phase: Math.random() * Math.PI * 2,
+          animFrame: 0,
         animTimer: 0
       });
       
@@ -1739,9 +1742,15 @@ function damageBoss() {
 
 function triggerBossDefeat() {
   boss.state = 'defeat';
-  boss.timer = 2.0; // 2秒の消滅演出
-  
-  showCutin('BOSS DEFEATED!', '完全勝利!!', 1600, 'victory');
+  boss.timer = 2.4;
+  boss.defeatPhase = 'fade';
+  boss.hurtTimer = 2.4;
+  enemies = [];
+  obstacles = [];
+  combo.type = 'none';
+  combo.count = 0;
+  updateComboUI();
+  hideDialogue();
   showEffectText('ドカーン!!', 900, 'effect');
   
   // ボスBGMフェードアウト
@@ -1762,6 +1771,30 @@ function triggerBossDefeat() {
 
 }
 
+function finishBossDefeatFade() {
+  boss.active = false;
+  boss.state = 'none';
+  boss.defeatPhase = 'dialogue';
+  boss.defeatedCount++;
+  enemies = [];
+  obstacles = [];
+  particles = [];
+  player.state = 'run';
+  player.x = (player.side === 'left') ? WALL_OFFSET : W - WALL_OFFSET;
+  player.y = H * 0.65;
+  player.invulnTimer = 1.0;
+  startDialogue('倒したようじゃ！', 'face/Neko-yorokobi.png', () => {
+    showCutin('ボス倒したよ！', 'やったね!!', 1500, 'victory');
+    setTimeout(() => {
+      startDialogue('さぁ先に進むぞ', 'face/Neko-Niyari.jpg', () => {
+        boss.defeatPhase = 'none';
+        resumeNormalBgm();
+        hideDialogue();
+      }, { mode: 'shout' });
+    }, 1550);
+  }, { mode: 'shout' });
+}
+
 function resumeNormalBgm() {
   try {
     bossBgm.pause();
@@ -1779,7 +1812,7 @@ function update(dt) {
   // ドラクエ風タイピング会話の更新
   updateDialogue(dt);
   
-  if (gameStartEventActive || (boss.active && (boss.state === 'warning' || boss.state === 'intro_dialogue' || boss.state === 'fight_dialogue'))) {
+  if (gameStartEventActive || boss.defeatPhase === 'dialogue' || (boss.active && (boss.state === 'warning' || boss.state === 'intro_dialogue' || boss.state === 'fight_dialogue'))) {
     // 会話中（キー入力待ち）はゲーム世界を完全に静止
     player.animTimer = 0;
     player.vx = 0;
@@ -1975,6 +2008,7 @@ function update(dt) {
       }
     } else if (e.type === 'rat') {
       e.x = e.initialX + Math.sin(e.timer * 2.2 + e.phase) * 35;
+      e.y += (e.vy || 95) * dt;
     } else if (e.type === 'yarn') {
       e.x += e.vx * dt;
       e.y += e.vy * dt;
@@ -2199,6 +2233,7 @@ function update(dt) {
             y: boss.y + 20,
             w: 46,
             h: 76,
+            vy: 95,
             timer: 0,
             phase: Math.random() * Math.PI * 2,
             animFrame: 0,
@@ -2235,19 +2270,15 @@ function update(dt) {
     } else if (boss.state === 'defeat') {
       // 撃破演出
       screenShake = Math.max(screenShake, 2.5);
-      boss.y += 80 * dt; // 落下
+      boss.y += 32 * dt;
       
       if (Math.random() < 0.3) {
-        spawnParticle(boss.x + (Math.random()*60-30), boss.y + (Math.random()*60-30), '#ff007f', 1.5, 5);
-        spawnParticle(boss.x + (Math.random()*60-30), boss.y + (Math.random()*60-30), '#fb923c', 1.2, 5);
+        spawnParticle(boss.x + (Math.random()*70-35), boss.y + (Math.random()*70-35), '#ffffff', 1.2, 5);
+        spawnParticle(boss.x + (Math.random()*70-35), boss.y + (Math.random()*70-35), '#ffd166', 1.0, 4);
       }
       
       if (boss.timer <= 0) {
-        boss.active = false;
-        boss.state = 'none';
-        boss.defeatedCount++; // 難易度レベルアップ！
-        resumeNormalBgm();
-        startDialogue('ボスを倒したぞ！', 'face/Neko-yorokobi.png', null, { mode: 'shout' });
+        finishBossDefeatFade();
       }
     }
   }
@@ -2525,7 +2556,7 @@ function draw() {
     if (bossFrame) {
       ctx.save();
       if (boss.state === 'defeat') {
-        ctx.globalAlpha = Math.max(0, boss.timer / 2.0);
+        ctx.globalAlpha = Math.max(0, boss.timer / 2.4);
       }
       ctx.scale(boss.side, 1);
       ctx.drawImage(bossFrame, -boss.w / 2, -boss.h / 2, boss.w, boss.h);
@@ -2534,6 +2565,12 @@ function draw() {
       if (boss.hurtTimer > 0 && Math.floor(boss.hurtTimer * 24) % 2 === 0) {
         ctx.globalCompositeOperation = 'source-atop';
         ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
+        ctx.fillRect(-boss.w / 2, -boss.h / 2, boss.w, boss.h);
+      }
+      if (boss.state === 'defeat') {
+        const fadeProgress = 1 - Math.max(0, boss.timer / 2.4);
+        ctx.globalCompositeOperation = 'source-atop';
+        ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(0.95, 0.25 + fadeProgress * 0.8)})`;
         ctx.fillRect(-boss.w / 2, -boss.h / 2, boss.w, boss.h);
       }
       ctx.restore();
