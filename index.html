@@ -216,22 +216,22 @@ header {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 120px;
+  min-height: 140px;
   background: rgba(13, 15, 29, 0.95);
   border-top: 3px solid var(--accent);
   display: flex;
   align-items: center;
-  padding: 12px 20px;
+  padding: 14px 18px;
   z-index: 15;
   box-shadow: 0 -10px 30px rgba(0,0,0,0.6);
   backdrop-filter: blur(8px);
 }
 #dialogueFace {
-  width: 72px;
-  height: 72px;
-  border-radius: 12px;
+  width: 96px;
+  height: 96px;
+  border-radius: 16px;
   background: #1a1b35;
-  border: 2px solid var(--accent-light);
+  border: 3px solid var(--accent-light);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -249,18 +249,43 @@ header {
   flex-grow: 1;
 }
 #dialogueName {
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 900;
   color: var(--accent-light);
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-bottom: 4px;
 }
 #dialogueText {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 21px;
+  font-weight: 800;
   color: #fff;
-  line-height: 1.4;
+  line-height: 1.25;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.75);
+}
+#dialogueWrap.dialogue-effect {
+  justify-content: center;
+  text-align: center;
+  border-top-color: #ffd166;
+  background: rgba(10, 8, 20, 0.78);
+}
+#dialogueWrap.dialogue-effect #dialogueFace,
+#dialogueWrap.dialogue-effect #dialogueName {
+  display: none;
+}
+#dialogueWrap.dialogue-effect #dialogueText {
+  font-size: 34px;
+  font-weight: 1000;
+  letter-spacing: 2px;
+  color: #fff1a6;
+  text-shadow: 0 0 10px #ff9f1c, 0 3px 0 #6b1d8f, 0 8px 18px rgba(0,0,0,0.9);
+}
+#dialogueWrap.dialogue-shout #dialogueText {
+  font-size: 40px;
+  font-weight: 1000;
+  letter-spacing: 3px;
+  color: #ffffff;
+  text-shadow: 0 0 14px #f07dfa, 0 4px 0 #7b1fa2, 0 8px 18px rgba(0,0,0,0.9);
 }
 
 /* ボス警告演出用の赤色警告オーバーレイ */
@@ -296,6 +321,50 @@ header {
   0% { opacity: 0.1; }
   100% { opacity: 1.0; }
 }
+
+#cutinOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  background: radial-gradient(circle, rgba(255,255,255,0.2), rgba(189,52,235,0.18) 35%, rgba(0,0,0,0.1) 70%);
+  animation: cutinFlash 0.18s alternate infinite;
+}
+.cutin-title {
+  font-size: 42px;
+  font-weight: 1000;
+  color: #fff;
+  letter-spacing: 2px;
+  transform: skew(-8deg) rotate(-3deg);
+  text-shadow: 0 0 8px #fff, 0 0 18px #ff2bd6, 0 5px 0 #4c0f70, 0 12px 24px rgba(0,0,0,0.75);
+}
+.cutin-sub {
+  margin-top: 10px;
+  padding: 6px 16px;
+  font-size: 20px;
+  font-weight: 1000;
+  color: #1a1030;
+  background: linear-gradient(90deg, #fff1a6, #ff9f1c, #fff1a6);
+  border: 3px solid #fff;
+  border-radius: 999px;
+  box-shadow: 0 0 18px rgba(255,209,102,0.8);
+}
+#cutinOverlay.victory {
+  background: radial-gradient(circle, rgba(255,241,166,0.32), rgba(240,125,250,0.18) 42%, rgba(0,0,0,0.08) 72%);
+}
+#cutinOverlay.victory .cutin-title {
+  color: #fff7c7;
+  text-shadow: 0 0 10px #fff, 0 0 22px #ffd166, 0 5px 0 #8a3c00, 0 12px 24px rgba(0,0,0,0.75);
+}
+@keyframes cutinFlash {
+  from { filter: brightness(1); transform: scale(0.98); }
+  to { filter: brightness(1.28); transform: scale(1.02); }
+}
 </style>
 </head>
 <body>
@@ -325,14 +394,19 @@ header {
     <div class="warning-sub">BOSS APPROACHING</div>
   </div>
 
+  <div id="cutinOverlay" class="hidden">
+    <div class="cutin-title" id="cutinTitle"></div>
+    <div class="cutin-sub" id="cutinSub"></div>
+  </div>
+
   <!-- 会話ウィンドウ -->
-  <div id="dialogueWrap">
+  <div id="dialogueWrap" class="hidden">
     <div id="dialogueFace">
       <img id="dialogueFaceImg" src="cat-run-0.png" alt="cat" />
     </div>
     <div id="dialogueContent">
       <div id="dialogueName">クロネコ</div>
-      <div id="dialogueText">ワレとともに高みを目指すぞ</div>
+      <div id="dialogueText"></div>
     </div>
   </div>
 
@@ -390,7 +464,13 @@ const slot2 = document.getElementById('slot2');
 
 const dialogueTextEl = document.getElementById('dialogueText');
 const bossWarningOverlay = document.getElementById('bossWarningOverlay');
+const dialogueWrap = document.getElementById('dialogueWrap');
+const dialogueFace = document.getElementById('dialogueFace');
+const dialogueNameEl = document.getElementById('dialogueName');
 const dialogueFaceImg = document.getElementById('dialogueFaceImg');
+const cutinOverlay = document.getElementById('cutinOverlay');
+const cutinTitle = document.getElementById('cutinTitle');
+const cutinSub = document.getElementById('cutinSub');
 
 let W = 480, H = 640;
 let running = false;
@@ -420,7 +500,8 @@ let dialogueState = {
   speed: 0.04, // 1文字あたり0.04秒
   callback: null,
   face: "face/Neko-up.jpg",
-  waitingInput: false
+  waitingInput: false,
+  mode: ""
 };
 
 // パターンキャッシュ（レンガの描画パターンを毎フレーム生成しないようにキャッシュします）
@@ -559,16 +640,64 @@ class BossIntroSynthesizer {
 }
 const bossIntroSynth = new BossIntroSynthesizer();
 
-function setDialogueDOM(text, facePath) {
+let cutinTimerId = 0;
+
+function applyDialogueMode(mode = "") {
+  if (!dialogueWrap) return;
+  dialogueWrap.classList.remove('dialogue-effect', 'dialogue-shout');
+  if (mode === 'effect') dialogueWrap.classList.add('dialogue-effect');
+  if (mode === 'shout') dialogueWrap.classList.add('dialogue-shout');
+}
+
+function hideDialogue() {
+  dialogueState.active = false;
+  dialogueState.waitingInput = false;
+  dialogueState.currentText = "";
+  dialogueState.text = "";
+  if (dialogueTextEl) dialogueTextEl.textContent = "";
+  if (dialogueWrap) dialogueWrap.classList.add('hidden');
+}
+
+function setDialogueDOM(text, facePath, options = {}) {
+  const mode = options.mode || "";
+  applyDialogueMode(mode);
+  if (dialogueWrap) dialogueWrap.classList.remove('hidden');
   if (dialogueTextEl) {
     dialogueTextEl.textContent = text;
+  }
+  if (dialogueNameEl) {
+    dialogueNameEl.textContent = options.name || "クロネコ";
+  }
+  if (dialogueFace) {
+    dialogueFace.classList.toggle('hidden', mode === 'effect' || options.hideFace === true);
   }
   if (dialogueFaceImg && facePath) {
     dialogueFaceImg.src = facePath;
   }
 }
 
-function startDialogue(text, face, callback) {
+function showEffectText(text, duration = 900, mode = 'effect') {
+  setDialogueDOM(text, null, { mode, hideFace: true, name: "" });
+  if (duration > 0) {
+    setTimeout(() => {
+      if (!dialogueState.active) hideDialogue();
+    }, duration);
+  }
+}
+
+function showCutin(title, sub = "", duration = 1200, variant = "") {
+  if (!cutinOverlay) return;
+  if (cutinTimerId) clearTimeout(cutinTimerId);
+  cutinOverlay.className = variant ? variant : "";
+  cutinOverlay.classList.remove('hidden');
+  if (cutinTitle) cutinTitle.textContent = title;
+  if (cutinSub) cutinSub.textContent = sub;
+  cutinTimerId = setTimeout(() => {
+    cutinOverlay.classList.add('hidden');
+  }, duration);
+}
+
+function startDialogue(text, face, callback, options = {}) {
   dialogueState.active = true;
   dialogueState.text = text;
   dialogueState.currentText = "";
@@ -577,8 +706,9 @@ function startDialogue(text, face, callback) {
   dialogueState.face = face || "face/Neko-up.jpg";
   dialogueState.callback = callback || null;
   dialogueState.waitingInput = false;
+  dialogueState.mode = options.mode || "";
   
-  setDialogueDOM("", dialogueState.face);
+  setDialogueDOM("", dialogueState.face, options);
 }
 
 function advanceDialogue() {
@@ -588,13 +718,14 @@ function advanceDialogue() {
     dialogueState.charIndex = dialogueState.text.length;
     dialogueState.currentText = dialogueState.text;
     dialogueState.waitingInput = true;
-    setDialogueDOM(dialogueState.currentText + " ▼", dialogueState.face);
+    setDialogueDOM(dialogueState.currentText + " ▼", dialogueState.face, { mode: dialogueState.mode });
     return true;
   }
 
   if (dialogueState.waitingInput) {
     dialogueState.active = false;
     dialogueState.waitingInput = false;
+    hideDialogue();
     
     if (dialogueState.callback) {
       const cb = dialogueState.callback;
@@ -615,11 +746,11 @@ function updateDialogue(dt) {
       dialogueState.timer = 0;
       dialogueState.charIndex++;
       dialogueState.currentText = dialogueState.text.slice(0, dialogueState.charIndex);
-      setDialogueDOM(dialogueState.currentText, dialogueState.face);
+      setDialogueDOM(dialogueState.currentText, dialogueState.face, { mode: dialogueState.mode });
     }
   } else {
     dialogueState.waitingInput = true;
-    setDialogueDOM(dialogueState.currentText + " ▼", dialogueState.face);
+    setDialogueDOM(dialogueState.currentText + " ▼", dialogueState.face, { mode: dialogueState.mode });
   }
 }
 
@@ -1091,7 +1222,7 @@ setTimeout(resizeCanvas, 50);
 // ----------------- ヘルパー関数 -----------------
 function updateComboUI() {
   const slots = [slot0, slot1, slot2];
-  const maxSlots = (boss.active) ? 2 : 3;
+  const maxSlots = 3;
   
   slots.forEach((slot, index) => {
     if (index < maxSlots) {
@@ -1230,7 +1361,7 @@ function resetGame() {
   dialogueState.active = false;
   dialogueState.waitingInput = false;
 
-  setDialogueDOM('ワレとともに高みを目指すぞ', 'face/Neko-Niyari.jpg');
+  hideDialogue();
   if (bossWarningOverlay) {
     bossWarningOverlay.classList.add('hidden');
   }
@@ -1283,17 +1414,13 @@ async function startGame() {
   resetGame();
   resizeCanvas();
   
-  // ドラクエ風に開始セリフをタイピング表示し、キー入力決定後に進行
-  gameStartEventActive = true;
+  gameStartEventActive = false;
   running = true;
-  
-  startDialogue('ワレとともに高みを目指すぞ', 'face/Neko-Niyari.jpg', () => {
-    gameStartEventActive = false;
-    try {
-      bgm.currentTime = 0;
-      bgm.play().catch(e => console.log('BGM Play block:', e));
-    } catch(e) {}
-  });
+  hideDialogue();
+  try {
+    bgm.currentTime = 0;
+    bgm.play().catch(e => console.log('BGM Play block:', e));
+  } catch(e) {}
   
   if (rafId) cancelAnimationFrame(rafId);
   rafId = requestAnimationFrame(loop);
@@ -1435,7 +1562,7 @@ function handleSpawning(dt, gameSpeed) {
 // ----------------- ボスアクション制御 -----------------
 function triggerBossIntro() {
   boss.active = true;
-  boss.state = 'intro_dialogue'; // ボス出現時のなんじゃ～会話イベントステート
+  boss.state = 'warning';
   boss.hp = 3;
   boss.maxHp = 3;
   boss.x = W / 2;
@@ -1443,6 +1570,7 @@ function triggerBossIntro() {
   boss.side = 1;
   boss.spawnTimer = 0;
   boss.hurtTimer = 0;
+  boss.timer = 2.4;
 
   // ボスアラート突入時、画面上に存在していた通常敵・障害物を一括クリア
   enemies = [];
@@ -1458,6 +1586,7 @@ function triggerBossIntro() {
     bossWarningOverlay.classList.remove('hidden');
   }
   bossIntroSynth.start();
+  hideDialogue();
 
   // 猫停止
   player.state = 'run';
@@ -1466,10 +1595,17 @@ function triggerBossIntro() {
   player.jumpProgress = 0;
   player.angle = 0;
   
-  // ドラクエ風に喋り、完了後に決定キーでボス降臨開始
+}
+
+function startBossIntroDialogue() {
+  boss.state = 'intro_dialogue';
+  bossIntroSynth.stop();
+  if (bossWarningOverlay) {
+    bossWarningOverlay.classList.add('hidden');
+  }
   startDialogue('なんじゃ～～', 'face/Neko-bikkuri.png', () => {
     startBossDescent();
-  });
+  }, { mode: 'shout' });
 }
 
 function startBossDescent() {
@@ -1482,8 +1618,8 @@ function startBossDescent() {
     bossIntroBgm.play().catch(e => console.log('Boss Intro BGM blocked:', e));
   } catch(e) {}
 
-  // 降臨中の無言メッセージ
-  setDialogueDOM('ゴゴゴゴゴゴゴゴ・・・', 'face/Neko-bikkuri.png');
+  // 降臨中の効果音テキスト
+  showEffectText('ゴゴゴゴゴゴゴ...', 1200, 'effect');
 }
 
 function triggerBossFight() {
@@ -1501,7 +1637,7 @@ function triggerBossFight() {
   // ドラクエ風に喋り、完了後に決定キーで戦闘開始
   startDialogue('必殺技でやつを倒すのじゃ', 'face/Neko-ikari.png', () => {
     startBossFight();
-  });
+  }, { mode: 'shout' });
 }
 
 function startBossFight() {
@@ -1515,7 +1651,7 @@ function startBossFight() {
     bossBgm.play().catch(e => console.log('Boss BGM blocked:', e));
   } catch(e){}
 
-  setDialogueDOM('必殺技でやつを倒すのじゃ', 'face/Neko-ikari.png');
+  hideDialogue();
 }
 
 function damageBoss() {
@@ -1541,7 +1677,7 @@ function damageBoss() {
   if (boss.hp <= 0) {
     triggerBossDefeat();
   } else {
-    setDialogueDOM('必殺技でやつを倒すのじゃ', 'face/Neko-ikari.png');
+    showEffectText('効いた!!', 650, 'effect');
   }
 }
 
@@ -1549,7 +1685,8 @@ function triggerBossDefeat() {
   boss.state = 'defeat';
   boss.timer = 2.0; // 2秒の消滅演出
   
-  startDialogue('ワレの勝ちじゃ！', 'face/Neko-yorokobi.png');
+  showCutin('BOSS DEFEATED!', '完全勝利!!', 1600, 'victory');
+  showEffectText('ドカーン!!', 900, 'effect');
   
   // ボスBGMフェードアウト
   let fadeCount = 0;
@@ -1567,15 +1704,18 @@ function triggerBossDefeat() {
     }
   }, 50);
 
-  // 通常BGMの再開準備
-  setTimeout(() => {
-    if (running && !boss.active) {
-      try {
-        bgm.currentTime = 0;
-        bgm.play().catch(e => {});
-      } catch(e){}
-    }
-  }, 2000);
+}
+
+function resumeNormalBgm() {
+  try {
+    bossBgm.pause();
+    bossBgm.currentTime = 0;
+    bossBgm.volume = 1.0;
+  } catch(e) {}
+  try {
+    bgm.currentTime = 0;
+    bgm.play().catch(e => {});
+  } catch(e) {}
 }
 
 // ----------------- 更新処理 (UPDATE) -----------------
@@ -1583,7 +1723,7 @@ function update(dt) {
   // ドラクエ風タイピング会話の更新
   updateDialogue(dt);
   
-  if (gameStartEventActive || (boss.active && (boss.state === 'intro_dialogue' || boss.state === 'fight_dialogue'))) {
+  if (gameStartEventActive || (boss.active && (boss.state === 'warning' || boss.state === 'intro_dialogue' || boss.state === 'fight_dialogue'))) {
     // 会話中（キー入力待ち）はゲーム世界を完全に静止
     player.animTimer = 0;
     player.vx = 0;
@@ -1607,6 +1747,13 @@ function update(dt) {
       p.x += p.vx;
       p.y += p.vy;
       if (p.life <= 0) particles.splice(i, 1);
+    }
+    if (boss.active && boss.state === 'warning') {
+      screenShake = Math.max(screenShake, 2.5);
+      boss.timer -= dt;
+      if (boss.timer <= 0) {
+        startBossIntroDialogue();
+      }
     }
     return;
   }
@@ -1657,11 +1804,7 @@ function update(dt) {
       spawnParticle(player.x, player.y, '#f07dfa', 1.0, 10);
       
       // セリフを元に戻す
-      if (boss.active && boss.state === 'fight') {
-        setDialogueDOM('必殺技でやつを倒すのじゃ', 'face/Neko-ikari.png');
-      } else {
-        setDialogueDOM('ワレとともに高みを目指すぞ', 'face/Neko-up.jpg');
-      }
+      hideDialogue();
     }
   }
   
@@ -1733,8 +1876,8 @@ function update(dt) {
       player.y -= 1200 * dt;
     }
     
-    if (Math.random() < 0.12) {
-      spawnParticle(player.x, player.y + 30, '#bd34eb', 0.5, 3);
+    if (Math.random() < 0.35) {
+      spawnParticle(player.x + (Math.random() * 80 - 40), player.y + 50, Math.random() < 0.5 ? '#bd34eb' : '#60a5fa', 0.8, 4);
     }
     
     // 必殺技（メガダッシュ）専用の10フレーム高速羽ばたきアニメーションの進行
@@ -1820,9 +1963,14 @@ function update(dt) {
         screenShake = 1.8;
         
         if (boss.active) {
-          // ボス戦時はリセットなしの累積カウント
-          combo.type = 'crow';
-          combo.count++;
+          if (e.type === 'crow') {
+            combo.type = 'crow';
+            combo.count++;
+          } else {
+            combo.type = 'none';
+            combo.count = 0;
+            showEffectText('鳥でコンボをつなげ!!', 700, 'effect');
+          }
         } else {
           // 通常時は連続コンボ
           if (combo.type === e.type) {
@@ -1835,10 +1983,11 @@ function update(dt) {
         
         updateComboUI();
         
-        const requiredCombo = boss.active ? 2 : 3;
+        const requiredCombo = 3;
         if (combo.count >= requiredCombo) {
+          const activatedDashType = boss.active ? 'crow' : combo.type;
           player.state = 'dash';
-          player.dashType = boss.active ? 'crow' : combo.type; // 必殺技をトリガーした敵の種類を保存！
+          player.dashType = activatedDashType; // 必殺技をトリガーした敵の種類を保存！
           player.dashTimer = 3.0;
           screenShake = 3.5;
           combo.count = 0;
@@ -1846,7 +1995,8 @@ function update(dt) {
           updateComboUI();
           spawnParticle(player.x, player.y, '#f07dfa', 2.0, 25);
           
-          setDialogueDOM('ゆけ～～！！', 'face/Neko-yorokobi.png');
+          showCutin('MEGA DASH', boss.active ? 'MODE: BIRD' : `MODE: ${activatedDashType.toUpperCase()}`, 1250);
+          showEffectText('ゆけ～～～!!', 950, 'shout');
 
           // 必殺技（メガダッシュ）発動SE ＆ ループSEの再生
           se.playDashStart();
@@ -1964,38 +2114,57 @@ function update(dt) {
         boss.animFrame = (boss.animFrame + 1) % 2;
       }
       
-      // 通常カラスを2体同時に召喚 (2.2秒毎)
+      // ボスは敵を1体ずつ召喚する
       boss.spawnTimer += dt;
-      if (boss.spawnTimer >= 2.2) {
+      if (boss.spawnTimer >= 1.65) {
         boss.spawnTimer = 0;
-        
-        // ボスから鳥（通常カラス）2羽を同時に召喚し、羽を動かす（飛行速度を緩やかに調整し、ジャンプで的確に狙いやすくします）
-        enemies.push({
-          type: 'crow',
-          x: boss.x - 30,
-          y: boss.y + 20,
-          w: 54,
-          h: 54,
-          vx: -120,
-          vy: 170,
-          scaleX: -1,
-          timer: 0,
-          animFrame: 0,
-          animTimer: 0
-        });
-        enemies.push({
-          type: 'crow',
-          x: boss.x + 30,
-          y: boss.y + 20,
-          w: 54,
-          h: 54,
-          vx: 120,
-          vy: 170,
-          scaleX: 1,
-          timer: 0,
-          animFrame: 0,
-          animTimer: 0
-        });
+        const summonRoll = Math.random();
+        if (summonRoll < 0.55) {
+          const dir = Math.random() < 0.5 ? -1 : 1;
+          enemies.push({
+            type: 'crow',
+            x: boss.x,
+            y: boss.y + 20,
+            w: 54,
+            h: 54,
+            vx: dir * 150,
+            vy: 175,
+            scaleX: dir,
+            timer: 0,
+            animFrame: 0,
+            animTimer: 0
+          });
+        } else if (summonRoll < 0.78) {
+          const chosenX = [WALL_OFFSET + 10, W / 2, W - WALL_OFFSET - 10][Math.floor(Math.random() * 3)];
+          enemies.push({
+            type: 'rat',
+            x: chosenX,
+            initialX: chosenX,
+            y: boss.y + 20,
+            w: 46,
+            h: 76,
+            timer: 0,
+            phase: Math.random() * Math.PI * 2,
+            animFrame: 0,
+            animTimer: 0
+          });
+        } else {
+          const side = Math.random() < 0.5 ? 'left' : 'right';
+          enemies.push({
+            type: 'yarn',
+            side: side,
+            x: side === 'left' ? WALL_OFFSET + 10 : W - WALL_OFFSET - 10,
+            y: boss.y + 20,
+            w: 44,
+            h: 44,
+            vx: (side === 'left' ? 1 : -1) * 360,
+            vy: 150,
+            rot: 0,
+            rotSpeed: (side === 'left' ? 1 : -1) * 6,
+            squashX: 1.0,
+            squashY: 1.0
+          });
+        }
         
         boss.animFrame = 1; // 一瞬羽を閉じる
       }
@@ -2021,8 +2190,8 @@ function update(dt) {
         boss.active = false;
         boss.state = 'none';
         boss.defeatedCount++; // 難易度レベルアップ！
-        
-        setDialogueDOM('ワレとともに高みを目指すぞ', 'face/Neko-up.jpg');
+        resumeNormalBgm();
+        startDialogue('ボスを倒したぞ！', 'face/Neko-yorokobi.png', null, { mode: 'shout' });
       }
     }
   }
@@ -2057,6 +2226,27 @@ function draw() {
     ctx.fill();
   });
   ctx.globalAlpha = 1.0;
+
+  if (player.state === 'dash') {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 14; i++) {
+      const x = ((i * 37 + scrollPos * 0.9) % (W + 120)) - 60;
+      const y = (i * 59 + scrollPos * 1.6) % H;
+      const len = 70 + (i % 4) * 24;
+      const grad = ctx.createLinearGradient(x, y + len, x, y - len);
+      grad.addColorStop(0, 'rgba(240,125,250,0)');
+      grad.addColorStop(0.5, 'rgba(255,255,255,0.65)');
+      grad.addColorStop(1, 'rgba(59,130,246,0)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 3 + (i % 3);
+      ctx.beginPath();
+      ctx.moveTo(x, y + len);
+      ctx.lineTo(x + (i % 2 ? 18 : -18), y - len);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   
   // 2. 左右の壁 (LANCZOS最適化シームレスレンガパターン)
   if (brickPattern) {
@@ -2182,8 +2372,7 @@ function draw() {
     ctx.strokeStyle = 'rgba(240, 125, 250, 0.5)';
     ctx.lineWidth = 8;
     ctx.beginPath();
-    // プレイヤーのサイズ拡大(96)に合わせて、紫のオーラリングも外側を綺麗に囲むように半径を56へ拡大
-    ctx.arc(0, 0, 56 + Math.sin(scrollPos*0.2)*4, 0, Math.PI*2);
+    ctx.arc(0, 0, 126 + Math.sin(scrollPos*0.2)*8, 0, Math.PI*2);
     ctx.stroke();
   }
   
@@ -2191,7 +2380,7 @@ function draw() {
   if (loadedAssetsCount >= totalAssetsToLoad) {
     if (player.state === 'dash') {
       let currentImg = null;
-      let drawW = 96; // 必殺技中なので、通常(64)より大幅に大きく(96)ダイナミックに描画して迫力を表現！
+      let drawW = 240;
       
       // 発動させたコンボ敵の種類に応じて、必殺技スプライトを動的に切り替える
       if (player.dashType === 'crow' && specialFlightImgs[player.dashAnimFrame]) {
@@ -2356,7 +2545,7 @@ function triggerJump() {
   if (!running || player.state === 'hurt') return;
   // 会話イベント中、またはボス登場・撃破演出中はジャンプ操作を受け付けない
   if (gameStartEventActive) return;
-  if (boss.active && (boss.state === 'intro' || boss.state === 'defeat' || boss.state === 'intro_dialogue' || boss.state === 'fight_dialogue')) return;
+  if (boss.active && (boss.state === 'warning' || boss.state === 'intro' || boss.state === 'defeat' || boss.state === 'intro_dialogue' || boss.state === 'fight_dialogue')) return;
   
   if (player.state === 'run') {
     player.state = 'jump';
