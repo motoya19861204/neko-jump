@@ -910,6 +910,61 @@ class SoundManager {
     return true;
   }
 
+  playDashFlourish() {
+    const ctxAudio = this.audioContext;
+    if (!ctxAudio || ctxAudio.state === 'suspended') return;
+
+    try {
+      const now = ctxAudio.currentTime;
+      const master = ctxAudio.createGain();
+      master.gain.setValueAtTime(0.0001, now);
+      master.gain.exponentialRampToValueAtTime(0.7, now + 0.035);
+      master.gain.exponentialRampToValueAtTime(0.0001, now + 0.72);
+      master.connect(ctxAudio.destination);
+
+      const riser = ctxAudio.createOscillator();
+      const riserGain = ctxAudio.createGain();
+      riser.type = 'sawtooth';
+      riser.frequency.setValueAtTime(240, now);
+      riser.frequency.exponentialRampToValueAtTime(1550, now + 0.48);
+      riserGain.gain.setValueAtTime(0.0001, now);
+      riserGain.gain.exponentialRampToValueAtTime(0.18, now + 0.04);
+      riserGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
+      riser.connect(riserGain);
+      riserGain.connect(master);
+      riser.start(now);
+      riser.stop(now + 0.54);
+
+      const punch = ctxAudio.createOscillator();
+      const punchGain = ctxAudio.createGain();
+      punch.type = 'triangle';
+      punch.frequency.setValueAtTime(820, now + 0.03);
+      punch.frequency.exponentialRampToValueAtTime(210, now + 0.22);
+      punchGain.gain.setValueAtTime(0.26, now + 0.03);
+      punchGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+      punch.connect(punchGain);
+      punchGain.connect(master);
+      punch.start(now + 0.03);
+      punch.stop(now + 0.28);
+
+      for (let i = 0; i < 3; i++) {
+        const startAt = now + 0.18 + i * 0.09;
+        const sparkle = ctxAudio.createOscillator();
+        const sparkleGain = ctxAudio.createGain();
+        sparkle.type = 'sine';
+        sparkle.frequency.setValueAtTime(1450 + i * 260, startAt);
+        sparkle.frequency.exponentialRampToValueAtTime(2200 + i * 300, startAt + 0.08);
+        sparkleGain.gain.setValueAtTime(0.0001, startAt);
+        sparkleGain.gain.exponentialRampToValueAtTime(0.11, startAt + 0.012);
+        sparkleGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.16);
+        sparkle.connect(sparkleGain);
+        sparkleGain.connect(master);
+        sparkle.start(startAt);
+        sparkle.stop(startAt + 0.18);
+      }
+    } catch(e) {}
+  }
+
   play(key, volume = 0.5, speed = 1.0, duration = null) {
     try {
       if (this.useWebAudio && this.audioContext) {
@@ -975,6 +1030,7 @@ class SoundManager {
   // 必殺技発動音
   playDashStart() {
     this.play('dash', 0.7, 1.15, 0.65);
+    this.playDashFlourish();
   }
 
   playDashLoop(duration) {
