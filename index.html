@@ -257,10 +257,10 @@ header {
   margin-bottom: 4px;
 }
 #dialogueText {
-  font-size: 21px;
+  font-size: 18px;
   font-weight: 800;
   color: #fff;
-  line-height: 1.25;
+  line-height: 1.32;
   text-shadow: 0 2px 8px rgba(0,0,0,0.75);
 }
 #dialogueWrap.dialogue-effect {
@@ -274,16 +274,16 @@ header {
   display: none;
 }
 #dialogueWrap.dialogue-effect #dialogueText {
-  font-size: 34px;
+  font-size: 26px;
   font-weight: 1000;
-  letter-spacing: 2px;
+  letter-spacing: 1px;
   color: #fff1a6;
   text-shadow: 0 0 10px #ff9f1c, 0 3px 0 #6b1d8f, 0 8px 18px rgba(0,0,0,0.9);
 }
 #dialogueWrap.dialogue-shout #dialogueText {
-  font-size: 40px;
+  font-size: 28px;
   font-weight: 1000;
-  letter-spacing: 3px;
+  letter-spacing: 1px;
   color: #ffffff;
   text-shadow: 0 0 14px #f07dfa, 0 4px 0 #7b1fa2, 0 8px 18px rgba(0,0,0,0.9);
 }
@@ -361,6 +361,15 @@ header {
   color: #fff7c7;
   text-shadow: 0 0 10px #fff, 0 0 22px #ffd166, 0 5px 0 #8a3c00, 0 12px 24px rgba(0,0,0,0.75);
 }
+#whiteFadeOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 24;
+  pointer-events: none;
+  background: #fff;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+}
 @keyframes cutinFlash {
   from { filter: brightness(1); transform: scale(0.98); }
   to { filter: brightness(1.28); transform: scale(1.02); }
@@ -398,6 +407,7 @@ header {
     <div class="cutin-title" id="cutinTitle"></div>
     <div class="cutin-sub" id="cutinSub"></div>
   </div>
+  <div id="whiteFadeOverlay" class="hidden"></div>
 
   <!-- 会話ウィンドウ -->
   <div id="dialogueWrap" class="hidden">
@@ -474,6 +484,7 @@ const dialogueFaceImg = document.getElementById('dialogueFaceImg');
 const cutinOverlay = document.getElementById('cutinOverlay');
 const cutinTitle = document.getElementById('cutinTitle');
 const cutinSub = document.getElementById('cutinSub');
+const whiteFadeOverlay = document.getElementById('whiteFadeOverlay');
 
 let W = 480, H = 640;
 let running = false;
@@ -701,6 +712,32 @@ function showCutin(title, sub = "", duration = 1200, variant = "") {
   }, duration);
 }
 
+function setWhiteFade(visible, duration = 900) {
+  if (!whiteFadeOverlay) return;
+  whiteFadeOverlay.style.transition = `opacity ${duration}ms ease`;
+  whiteFadeOverlay.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    whiteFadeOverlay.style.opacity = visible ? '1' : '0';
+  });
+  if (!visible) {
+    setTimeout(() => {
+      if (whiteFadeOverlay.style.opacity === '0') {
+        whiteFadeOverlay.classList.add('hidden');
+      }
+    }, duration + 80);
+  }
+}
+
+function showAutoDialogue(text, face, duration = 1400, options = {}, callback = null) {
+  dialogueState.active = false;
+  dialogueState.waitingInput = false;
+  setDialogueDOM(text, face, options);
+  setTimeout(() => {
+    hideDialogue();
+    if (callback) callback();
+  }, duration);
+}
+
 function startDialogue(text, face, callback, options = {}) {
   dialogueState.active = true;
   dialogueState.text = text;
@@ -776,7 +813,8 @@ class SoundManager {
       jump: '「とう！」.mp3',
       hit: '剣で斬る2.mp3',
       dash: 'ビーム砲チャージ.mp3',
-      hurt: '「ぐああーーっ！」.mp3'
+      hurt: '「ぐああーーっ！」.mp3',
+      fanfare: 'ファンファーレ.mp3'
     };
     
     Object.keys(this.soundSources).forEach(key => {
@@ -969,6 +1007,18 @@ class SoundManager {
     }
   }
 
+  getDurationMs(key, fallback = 1600) {
+    const buffer = this.buffers[key];
+    if (buffer && Number.isFinite(buffer.duration)) {
+      return Math.max(400, buffer.duration * 1000);
+    }
+    const audio = this.pools[key] && this.pools[key][0];
+    if (audio && Number.isFinite(audio.duration) && audio.duration > 0) {
+      return Math.max(400, audio.duration * 1000);
+    }
+    return fallback;
+  }
+
   // 猫のジャンプ掛け声（切れ味鋭い「にゃっ！」と「ピョッ！」）
   playJump() {
     this.play('jump', 0.7, 1.0, 0.42);
@@ -986,6 +1036,11 @@ class SoundManager {
 
   playHurt() {
     this.play('hurt', 0.85, 1.0, 1.2);
+  }
+
+  playFanfare() {
+    this.play('fanfare', 0.9, 1.0, null);
+    return this.getDurationMs('fanfare', 2600);
   }
 
   playDashLoop(duration) {
@@ -1362,6 +1417,8 @@ function resetGame() {
   boss.x = W / 2;
   boss.y = -150;
   boss.hp = 3;
+  boss.maxHp = 3;
+  boss.defeatedCount = 0;
   boss.timer = 0;
   boss.spawnTimer = 0;
   boss.animFrame = 0;
@@ -1378,6 +1435,13 @@ function resetGame() {
   hideDialogue();
   if (bossWarningOverlay) {
     bossWarningOverlay.classList.add('hidden');
+  }
+  if (whiteFadeOverlay) {
+    whiteFadeOverlay.style.opacity = '0';
+    whiteFadeOverlay.classList.add('hidden');
+  }
+  if (cutinOverlay) {
+    cutinOverlay.classList.add('hidden');
   }
 
   scrollPos = 0;
@@ -1707,7 +1771,7 @@ function triggerBossDefeat() {
   combo.count = 0;
   updateComboUI();
   hideDialogue();
-  showEffectText('ドカーン!!', 900, 'effect');
+  setWhiteFade(true, 1200);
   
   // ボスBGMフェードアウト
   let fadeCount = 0;
@@ -1739,16 +1803,20 @@ function finishBossDefeatFade() {
   player.x = (player.side === 'left') ? WALL_OFFSET : W - WALL_OFFSET;
   player.y = H * 0.65;
   player.invulnTimer = 1.0;
-  startDialogue('倒したようじゃ！', 'face/Neko-yorokobi.png', () => {
-    showCutin('ボス倒したよ！', 'やったね!!', 1500, 'victory');
-    setTimeout(() => {
-      startDialogue('さぁ先に進むぞ', 'face/Neko-Niyari.jpg', () => {
-        boss.defeatPhase = 'none';
-        resumeNormalBgm();
-        hideDialogue();
-      }, { mode: 'shout' });
-    }, 1550);
-  }, { mode: 'shout' });
+  setWhiteFade(false, 900);
+  setTimeout(() => {
+    showAutoDialogue('倒したようじゃ！', 'face/Neko-yorokobi.png', 1450, { mode: 'shout' }, () => {
+      const fanfareMs = se.playFanfare();
+      showCutin('ボス倒したよ！', 'やったね!!', fanfareMs, 'victory');
+      setTimeout(() => {
+        showAutoDialogue('さぁ先に進むぞ', 'face/Neko-Niyari.jpg', 1200, { mode: 'shout' }, () => {
+          boss.defeatPhase = 'none';
+          resumeNormalBgm();
+          hideDialogue();
+        });
+      }, Math.max(600, fanfareMs - 1200));
+    });
+  }, 900);
 }
 
 function resumeNormalBgm() {
@@ -2415,7 +2483,7 @@ function draw() {
     ctx.strokeStyle = 'rgba(240, 125, 250, 0.5)';
     ctx.lineWidth = 8;
     ctx.beginPath();
-    ctx.arc(0, 0, 126 + Math.sin(scrollPos*0.2)*8, 0, Math.PI*2);
+    ctx.arc(0, 0, 104 + Math.sin(scrollPos*0.2)*7, 0, Math.PI*2);
     ctx.stroke();
   }
   
@@ -2423,7 +2491,7 @@ function draw() {
   if (loadedAssetsCount >= totalAssetsToLoad) {
     if (player.state === 'dash') {
       let currentImg = null;
-      let drawW = 240;
+      let drawW = 192;
       
       // 発動させたコンボ敵の種類に応じて、必殺技スプライトを動的に切り替える
       if (player.dashType === 'crow' && specialFlightImgs[player.dashAnimFrame]) {
